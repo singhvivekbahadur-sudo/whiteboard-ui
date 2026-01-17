@@ -47,10 +47,10 @@ const extractPrefix = value => {
 const resolveMarket = prefix =>
   MARKET_RANGES.find(r => prefix >= r.from && prefix <= r.to);
 
-/* ================= EMAIL (FIXED) ================= */
+/* ================= EMAIL ================= */
 const sendEmail = (templateId, site) => {
   const params = {
-    to_email: [site.asp_email_id, site.rsm_email].filter(Boolean).join(","), // ✅ FIX
+    to_email: site.asp_email_id || site.rsm_email,
     date: site.date,
     project: site.project,
     sa: site.sa,
@@ -79,12 +79,14 @@ export default function App() {
   const [soak, setSoak] = useState([]);
   const [cancelled, setCancelled] = useState([]);
 
+  /* ---------- Load from localStorage ---------- */
   useEffect(() => {
     setOngoing(JSON.parse(localStorage.getItem("ongoing")) || []);
     setSoak(JSON.parse(localStorage.getItem("soak")) || []);
     setCancelled(JSON.parse(localStorage.getItem("cancelled")) || []);
   }, []);
 
+  /* ---------- Save to localStorage ---------- */
   useEffect(() => localStorage.setItem("ongoing", JSON.stringify(ongoing)), [ongoing]);
   useEffect(() => localStorage.setItem("soak", JSON.stringify(soak)), [soak]);
   useEffect(() => localStorage.setItem("cancelled", JSON.stringify(cancelled)), [cancelled]);
@@ -143,11 +145,20 @@ export default function App() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Whiteboard</h1>
+      {/* ===== HEADER WITH LOGO ===== */}
+      <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+        <img
+          src="/ericsson.png"
+          alt="Ericsson"
+          style={{ height: 40 }}
+        />
+        <h1>Whiteboard</h1>
+      </div>
 
       <button onClick={addRow}>➕ Add Row</button>{" "}
       <button onClick={exportToExcel}>📊 Export to Excel</button>
 
+      {/* ===== ONGOING ===== */}
       <h2>Ongoing Sites</h2>
       <table border="1" width="100%">
         <thead>
@@ -176,6 +187,7 @@ export default function App() {
         </tbody>
       </table>
 
+      {/* ===== SOAK ===== */}
       <h2>Soak Completed</h2>
       <table border="1" width="100%">
         <thead>
@@ -196,6 +208,7 @@ export default function App() {
         </tbody>
       </table>
 
+      {/* ===== CANCELLED ===== */}
       <h2 style={{ color: "red" }}>❌ Cancelled Sites</h2>
       <table border="1" width="100%">
         <thead>
