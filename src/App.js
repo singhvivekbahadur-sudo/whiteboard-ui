@@ -32,14 +32,19 @@ const MARKET_RANGES = [
 export default function App() {
   const [rows, setRows] = useState([]);
   const [soakRows, setSoakRows] = useState([]);
+  const [cancelledRows, setCancelledRows] = useState([]);
 
+  // LOAD FROM STORAGE
   useEffect(() => {
     const r = localStorage.getItem("wb_rows");
     const s = localStorage.getItem("wb_soak");
+    const c = localStorage.getItem("wb_cancelled");
     if (r) setRows(JSON.parse(r));
     if (s) setSoakRows(JSON.parse(s));
+    if (c) setCancelledRows(JSON.parse(c));
   }, []);
 
+  // SAVE TO STORAGE
   useEffect(() => {
     localStorage.setItem("wb_rows", JSON.stringify(rows));
   }, [rows]);
@@ -47,6 +52,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("wb_soak", JSON.stringify(soakRows));
   }, [soakRows]);
+
+  useEffect(() => {
+    localStorage.setItem("wb_cancelled", JSON.stringify(cancelledRows));
+  }, [cancelledRows]);
 
   function addRow() {
     setRows([...rows, { ...emptyRow }]);
@@ -59,6 +68,12 @@ export default function App() {
   function moveToSoak(index) {
     const row = rows[index];
     setSoakRows([...soakRows, row]);
+    deleteRow(index);
+  }
+
+  function cancelRow(index) {
+    const row = rows[index];
+    setCancelledRows([...cancelledRows, row]);
     deleteRow(index);
   }
 
@@ -93,31 +108,30 @@ export default function App() {
     setRows(updated);
   }
 
-  function renderRow(row, i, isSoak = false) {
-    const ro = isSoak;
-
+  function renderRow(row, i, readOnly = false) {
     return (
-      <tr key={i} style={isSoak ? { backgroundColor: "#d4f8d4" } : {}}>
-        <td><input value={row.date} readOnly={ro} onChange={e => update(i, "date", e.target.value)} /></td>
-        <td><input value={row.project} readOnly={ro} onChange={e => update(i, "project", e.target.value)} /></td>
-        <td><input value={row.sa} readOnly={ro} onChange={e => update(i, "sa", e.target.value)} /></td>
+      <>
+        <td><input value={row.date} readOnly={readOnly} onChange={e => update(i, "date", e.target.value)} /></td>
+        <td><input value={row.project} readOnly={readOnly} onChange={e => update(i, "project", e.target.value)} /></td>
+        <td><input value={row.sa} readOnly={readOnly} onChange={e => update(i, "sa", e.target.value)} /></td>
         <td><input value={row.market} readOnly /></td>
-        <td><input value={row.site_id} readOnly={ro} onChange={e => update(i, "site_id", e.target.value)} /></td>
-        <td><input value={row.signum} readOnly={ro} onChange={e => update(i, "signum", e.target.value)} /></td>
-        <td><input value={row.asp_name_number} readOnly={ro} onChange={e => update(i, "asp_name_number", e.target.value)} /></td>
-        <td><input value={row.asp_email_id} readOnly={ro} onChange={e => update(i, "asp_email_id", e.target.value)} /></td>
-        <td><input value={row.comments} readOnly={ro} onChange={e => update(i, "comments", e.target.value)} /></td>
+        <td><input value={row.site_id} readOnly={readOnly} onChange={e => update(i, "site_id", e.target.value)} /></td>
+        <td><input value={row.signum} readOnly={readOnly} onChange={e => update(i, "signum", e.target.value)} /></td>
+        <td><input value={row.asp_name_number} readOnly={readOnly} onChange={e => update(i, "asp_name_number", e.target.value)} /></td>
+        <td><input value={row.asp_email_id} readOnly={readOnly} onChange={e => update(i, "asp_email_id", e.target.value)} /></td>
+        <td><input value={row.comments} readOnly={readOnly} onChange={e => update(i, "comments", e.target.value)} /></td>
         <td><input value={row.rsm} readOnly /></td>
         <td><input value={row.rsm_email} readOnly /></td>
         <td>
-          {!isSoak && (
+          {!readOnly && (
             <>
-              <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>
+              <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>{" "}
+              <button onClick={() => cancelRow(i)}>❌ Cancel</button>{" "}
               <button onClick={() => deleteRow(i)}>🗑</button>
             </>
           )}
         </td>
-      </tr>
+      </>
     );
   }
 
@@ -136,14 +150,31 @@ export default function App() {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => renderRow(r, i, false))}
+          {rows.map((r, i) => (
+            <tr key={i}>{renderRow(r, i, false)}</tr>
+          ))}
         </tbody>
       </table>
 
-      <h2>Soak Completed (30 mins)</h2>
+      <h2>Soak Completed</h2>
       <table border="1" cellPadding="5" width="100%">
         <tbody>
-          {soakRows.map((r, i) => renderRow(r, i, true))}
+          {soakRows.map((r, i) => (
+            <tr key={i} style={{ backgroundColor: "#d4f8d4" }}>
+              {renderRow(r, i, true)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2>❌ Cancelled Sites</h2>
+      <table border="1" cellPadding="5" width="100%">
+        <tbody>
+          {cancelledRows.map((r, i) => (
+            <tr key={i} style={{ backgroundColor: "#f8d7da" }}>
+              {renderRow(r, i, true)}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
