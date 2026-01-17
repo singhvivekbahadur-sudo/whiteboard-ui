@@ -1,13 +1,25 @@
 import React, { useEffect, useState } from "react";
 import emailjs from "@emailjs/browser";
 
-/* ================= EMAILJS CONFIG ================= */
-const EMAILJS_SERVICE_ID = "service_m1ki0js";
-const EMAILJS_TEMPLATE_ID = "template_tkia51p";
-const EMAILJS_PUBLIC_KEY = "a1fQr9xeIiL4hJlH8";
-/* ================================================== */
+const EMAIL_SERVICE_ID = "service_m1ki0js";
+const EMAIL_TEMPLATE_ID = "template_tkia51p";
+const EMAIL_PUBLIC_KEY = "a1fQr9xeIiL4hJlH8";
 
-emailjs.init(EMAILJS_PUBLIC_KEY);
+/* ---------------- AUTOFILL CONFIG ---------------- */
+const MARKET_RANGES = [
+  { from: 0, to: 8, market: "PNW", rsm: "Jesus Ruben", email: "jesus.ruben.luna@ericsson.com" },
+  { from: 10, to: 17, market: "MTN", rsm: "Supashya Saurav", email: "supashya.saurav@ericsson.com" },
+  { from: 20, to: 27, market: "SW", rsm: "Vivek Kumar", email: "vivek.j.kumar@ericsson.com" },
+  { from: 30, to: 38, market: "NoCal", rsm: "Jesus Ruben", email: "jesus.ruben.luna@ericsson.com" },
+  { from: 40, to: 54, market: "SoCal", rsm: "Vivek Kumar", email: "vivek.j.kumar@ericsson.com" },
+  { from: 142, to: 151, market: "Florida", rsm: "Vivek Singh", email: "vivek.bahadur.s.singh@ericsson.com" },
+  { from: 152, to: 164, market: "CAR/TN", rsm: "Vivek Singh", email: "vivek.bahadur.s.singh@ericsson.com" },
+  { from: 168, to: 177, market: "GA/AL", rsm: "Isaac David", email: "isaac.david.perez@ericsson.com" },
+  { from: 188, to: 198, market: "GP", rsm: "Fernando Gonzalez", email: "fernando.balderrama.gonzalez@ericsson.com" },
+  { from: 202, to: 210, market: "IL/WI", rsm: "Irwing Perez", email: "irwing.esquivel.perez@ericsson.com" },
+  { from: 214, to: 219, market: "KS/MO", rsm: "Supashya Saurav", email: "supashya.saurav@ericsson.com" },
+  { from: 224, to: 233, market: "MI/IN/KY", rsm: "Carlos Adrian", email: "carlos.adrian.melo@ericsson.com" }
+];
 
 const emptyRow = {
   date: new Date().toISOString().slice(0, 10),
@@ -23,42 +35,37 @@ const emptyRow = {
   rsm_email: ""
 };
 
-const MARKET_RANGES = [
-  { from: 0, to: 8, market: "PNW", rsm: "Jesus Ruben", email: "jesus.ruben.luna@ericsson.com" },
-  { from: 10, to: 17, market: "MTN", rsm: "Supashya Saurav", email: "supashya.saurav@ericsson.com" },
-  { from: 20, to: 27, market: "SW", rsm: "Vivek Kumar", email: "vivek.j.kumar@ericsson.com" },
-  { from: 30, to: 38, market: "NoCal", rsm: "Jesus Ruben", email: "jesus.ruben.luna@ericsson.com" },
-  { from: 40, to: 54, market: "SoCal", rsm: "Vivek Kumar", email: "vivek.j.kumar@ericsson.com" },
-  { from: 142, to: 151, market: "Florida", rsm: "Vivek Singh", email: "vivek.bahadur.s.singh@ericsson.com" },
-  { from: 152, to: 164, market: "CAR/TN", rsm: "Vivek Singh", email: "vivek.bahadur.s.singh@ericsson.com" }
-];
-
 export default function App() {
   const [rows, setRows] = useState([]);
   const [soakRows, setSoakRows] = useState([]);
-  const [cancelledRows, setCancelledRows] = useState([]);
+  const [cancelRows, setCancelRows] = useState([]);
 
+  /* -------- LOAD & AUTO DELETE 24HR SOAK -------- */
   useEffect(() => {
+    const now = Date.now();
     setRows(JSON.parse(localStorage.getItem("wb_rows") || "[]"));
-    setSoakRows(JSON.parse(localStorage.getItem("wb_soak") || "[]"));
-    setCancelledRows(JSON.parse(localStorage.getItem("wb_cancel") || "[]"));
+    setCancelRows(JSON.parse(localStorage.getItem("wb_cancel") || "[]"));
+    setSoakRows(
+      JSON.parse(localStorage.getItem("wb_soak") || "[]")
+        .filter(r => now - new Date(r.soak_start_time).getTime() < 24 * 60 * 60 * 1000)
+    );
   }, []);
 
   useEffect(() => localStorage.setItem("wb_rows", JSON.stringify(rows)), [rows]);
   useEffect(() => localStorage.setItem("wb_soak", JSON.stringify(soakRows)), [soakRows]);
-  useEffect(() => localStorage.setItem("wb_cancel", JSON.stringify(cancelledRows)), [cancelledRows]);
+  useEffect(() => localStorage.setItem("wb_cancel", JSON.stringify(cancelRows)), [cancelRows]);
 
   const addRow = () => setRows([...rows, { ...emptyRow }]);
-  const deleteRow = index => setRows(rows.filter((_, i) => i !== index));
 
-  const extractPrefix = value => {
-    const m = value.match(/\d{3}/);
-    return m ? parseInt(m[0], 10) : null;
+  /* ---------------- AUTOFILL LOGIC ---------------- */
+  const extractPrefix = (val) => {
+    const m = val.match(/\d{3,}/);
+    return m ? parseInt(m[0].substring(0, 3), 10) : null;
   };
 
-  const update = (index, field, value) => {
+  const update = (i, field, value) => {
     const updated = [...rows];
-    const row = { ...updated[index], [field]: value };
+    let row = { ...updated[i], [field]: value };
 
     if (field === "site_id") {
       const prefix = extractPrefix(value);
@@ -72,63 +79,66 @@ export default function App() {
       }
     }
 
-    updated[index] = row;
+    updated[i] = row;
     setRows(updated);
   };
 
-  /* 🔍 DEBUG EMAIL FUNCTION */
-  const sendSoakEmail = row => {
-    const to_email = [row.rsm_email, row.asp_email_id]
-      .filter(Boolean)
-      .join(",");
+  const moveToSoak = async (i) => {
+    const row = { ...rows[i], soak_start_time: new Date().toISOString() };
 
-    console.log("👉 EMAIL TRYING TO SEND TO:", to_email);
-
-    emailjs
-      .send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        { ...row, to_email }
-      )
-      .then(
-        res => console.log("✅ EMAIL SENT SUCCESS", res),
-        err => console.error("❌ EMAIL FAILED", err)
+    try {
+      await emailjs.send(
+        EMAIL_SERVICE_ID,
+        EMAIL_TEMPLATE_ID,
+        {
+          to_email: `${row.rsm_email}${row.asp_email_id ? "," + row.asp_email_id : ""}`,
+          ...row
+        },
+        EMAIL_PUBLIC_KEY
       );
-  };
+    } catch (e) {
+      console.error("Email failed", e);
+    }
 
-  const moveToSoak = index => {
-    const row = rows[index];
-    sendSoakEmail(row);
     setSoakRows([...soakRows, row]);
-    deleteRow(index);
+    setRows(rows.filter((_, idx) => idx !== i));
   };
 
-  const cancelRow = index => {
-    const row = rows[index];
-    setCancelledRows([...cancelledRows, row]);
-    deleteRow(index);
+  const cancelSite = (i) => {
+    setCancelRows([...cancelRows, rows[i]]);
+    setRows(rows.filter((_, idx) => idx !== i));
   };
 
-  const renderRow = (row, i, actions) => (
+  const renderHeaders = (extra = []) => (
+    <thead>
+      <tr>
+        {Object.keys(emptyRow).map(h => <th key={h}>{h.replace("_", " ").toUpperCase()}</th>)}
+        {extra.map(h => <th key={h}>{h}</th>)}
+        <th>Actions</th>
+      </tr>
+    </thead>
+  );
+
+  const renderRow = (r, i, readOnly, extra = null) => (
     <tr key={i}>
-      <td><input value={row.date} onChange={e => update(i,"date",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.project} onChange={e => update(i,"project",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.sa} onChange={e => update(i,"sa",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.market} readOnly /></td>
-      <td><input value={row.site_id} onChange={e => update(i,"site_id",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.signum} onChange={e => update(i,"signum",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.asp_name_number} onChange={e => update(i,"asp_name_number",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.asp_email_id} onChange={e => update(i,"asp_email_id",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.comments} onChange={e => update(i,"comments",e.target.value)} readOnly={!actions} /></td>
-      <td><input value={row.rsm} readOnly /></td>
-      <td><input value={row.rsm_email} readOnly /></td>
-      {actions && (
-        <td>
-          <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>
-          <button onClick={() => cancelRow(i)}>❌ Cancel</button>
-          <button onClick={() => deleteRow(i)}>🗑</button>
+      {Object.keys(emptyRow).map(k => (
+        <td key={k}>
+          <input
+            value={r[k] || ""}
+            readOnly={readOnly}
+            onChange={e => !readOnly && update(i, k, e.target.value)}
+          />
         </td>
-      )}
+      ))}
+      {extra}
+      <td>
+        {!readOnly && (
+          <>
+            <button onClick={() => moveToSoak(i)}>➡ Soak</button>
+            <button onClick={() => cancelSite(i)}>❌ Cancel</button>
+          </>
+        )}
+      </td>
     </tr>
   );
 
@@ -139,24 +149,24 @@ export default function App() {
 
       <h2>Ongoing Sites</h2>
       <table border="1" width="100%">
-        <thead>
-          <tr>
-            <th>Date</th><th>Project</th><th>SA</th><th>Market</th><th>Site ID</th>
-            <th>Signum</th><th>ASP Name</th><th>ASP Email</th>
-            <th>Comments</th><th>RSM</th><th>RSM Email</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>{rows.map((r,i)=>renderRow(r,i,true))}</tbody>
+        {renderHeaders()}
+        <tbody>{rows.map((r, i) => renderRow(r, i, false))}</tbody>
       </table>
 
       <h2>Soak Completed</h2>
       <table border="1" width="100%">
-        <tbody>{soakRows.map((r,i)=>renderRow(r,i,false))}</tbody>
+        {renderHeaders(["24 Soak Start"])}
+        <tbody>
+          {soakRows.map((r, i) =>
+            renderRow(r, i, true, <td>{new Date(r.soak_start_time).toLocaleString()}</td>)
+          )}
+        </tbody>
       </table>
 
-      <h2 style={{ color:"red" }}>❌ Cancelled Sites</h2>
+      <h2 style={{ color: "red" }}>❌ Cancelled Sites</h2>
       <table border="1" width="100%">
-        <tbody>{cancelledRows.map((r,i)=>renderRow(r,i,false))}</tbody>
+        {renderHeaders()}
+        <tbody>{cancelRows.map((r, i) => renderRow(r, i, true))}</tbody>
       </table>
     </div>
   );
