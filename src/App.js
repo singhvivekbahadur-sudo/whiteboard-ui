@@ -8,6 +8,9 @@ const EMAILJS_PUBLIC_KEY = "a1fQr9xeIiL4hJlH8";
 const TEMPLATE_SOAK = "template_tkia51p";
 const TEMPLATE_CANCEL = "template_y3pl72a";
 
+/* ================= CONSTANTS ================= */
+const DAY_24_MS = 24 * 60 * 60 * 1000;
+
 /* ================= MARKET RULES ================= */
 const MARKET_RANGES = [
   { from: 0, to: 8, market: "PNW", rsm: "Jesus Ruben", email: "jesus.ruben.luna@ericsson.com" },
@@ -79,14 +82,25 @@ export default function App() {
   const [soak, setSoak] = useState([]);
   const [cancelled, setCancelled] = useState([]);
 
-  /* ---------- Load from localStorage ---------- */
+  /* ---------- Load + AUTO CLEANUP ---------- */
   useEffect(() => {
+    const now = Date.now();
+
+    const cleanSoak = (JSON.parse(localStorage.getItem("soak")) || [])
+      .filter(r => now - r.soakStartEpoch < DAY_24_MS);
+
+    const cleanCancelled = (JSON.parse(localStorage.getItem("cancelled")) || [])
+      .filter(r => now - r.cancelledAtEpoch < DAY_24_MS);
+
     setOngoing(JSON.parse(localStorage.getItem("ongoing")) || []);
-    setSoak(JSON.parse(localStorage.getItem("soak")) || []);
-    setCancelled(JSON.parse(localStorage.getItem("cancelled")) || []);
+    setSoak(cleanSoak);
+    setCancelled(cleanCancelled);
+
+    localStorage.setItem("soak", JSON.stringify(cleanSoak));
+    localStorage.setItem("cancelled", JSON.stringify(cleanCancelled));
   }, []);
 
-  /* ---------- Save to localStorage ---------- */
+  /* ---------- Persist ---------- */
   useEffect(() => localStorage.setItem("ongoing", JSON.stringify(ongoing)), [ongoing]);
   useEffect(() => localStorage.setItem("soak", JSON.stringify(soak)), [soak]);
   useEffect(() => localStorage.setItem("cancelled", JSON.stringify(cancelled)), [cancelled]);
@@ -112,116 +126,109 @@ export default function App() {
   const addRow = () => setOngoing([...ongoing, { ...emptyRow }]);
 
   const moveToSoak = index => {
-    const site = { ...ongoing[index], soakStart: new Date().toLocaleString() };
+    const site = {
+      ...ongoing[index],
+      soakStart: new Date().toLocaleString(),
+      soakStartEpoch: Date.now()
+    };
+
     sendEmail(TEMPLATE_SOAK, site);
     setSoak([...soak, site]);
     setOngoing(ongoing.filter((_, i) => i !== index));
   };
 
   const cancelSite = index => {
-    const site = ongoing[index];
+    const site = {
+      ...ongoing[index],
+      cancelledAtEpoch: Date.now()
+    };
+
     sendEmail(TEMPLATE_CANCEL, site);
     setCancelled([...cancelled, site]);
     setOngoing(ongoing.filter((_, i) => i !== index));
   };
 
-  /* ================= EXCEL EXPORT ================= */
+  /* ---------- MANUAL DELETE ---------- */
+  const deleteOngoing = i => setOngoing(ongoing.filter((_, idx) => idx !== i));
+  const deleteSoak = i => setSoak(soak.filter((_, idx) => idx !== i));
+  const deleteCancelled = i => setCancelled(cancelled.filter((_, idx) => idx !== i));
+
+  /* ================= EXCEL ================= */
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
-
     const addSheet = (data, name) => {
       const ws = XLSX.utils.json_to_sheet(data);
       XLSX.utils.book_append_sheet(wb, ws, name);
     };
-
     addSheet(ongoing, "Ongoing Sites");
     addSheet(soak, "Soak Completed Sites");
     addSheet(cancelled, "Cancelled Sites");
-
     XLSX.writeFile(wb, "Whiteboard_Sites.xlsx");
   };
 
   const headers = Object.keys(emptyRow);
 
+  const renderHeader = extra =>
+    <tr>{headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}{extra && <th>ACTIONS</th>}</tr>;
+
   return (
     <div style={{ padding: 20 }}>
-      {/* ===== HEADER WITH LOGO ===== */}
       <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
-        <img
-          src="/ericsson.png"
-          alt="Ericsson"
-          style={{ height: 40 }}
-        />
+        <img src="/ericsson.png" alt="Ericsson" style={{ height: 40 }} />
         <h1>Whiteboard</h1>
       </div>
 
       <button onClick={addRow}>➕ Add Row</button>{" "}
       <button onClick={exportToExcel}>📊 Export to Excel</button>
 
-      {/* ===== ONGOING ===== */}
+      {/* ONGOING */}
       <h2>Ongoing Sites</h2>
       <table border="1" width="100%">
-        <thead>
-          <tr>
-            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
-            <th>ACTIONS</th>
-          </tr>
-        </thead>
+        <thead>{renderHeader(true)}</thead>
         <tbody>
           {ongoing.map((r, i) => (
             <tr key={i}>
               {headers.map(k => (
-                <td key={k}>
-                  <input
-                    value={r[k]}
-                    onChange={e => update(i, k, e.target.value)}
-                  />
-                </td>
+                <td key={k}><input value={r[k]} onChange={e => update(i, k, e.target.value)} /></td>
               ))}
               <td>
-                <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>{" "}
-                <button onClick={() => cancelSite(i)}>❌ Cancel</button>
+                <button onClick={() => moveToSoak(i)}>➡ Soak</button>{" "}
+                <button onClick={() => cancelSite(i)}>❌ Cancel</button>{" "}
+                <button onClick={() => deleteOngoing(i)}>🗑️ Delete</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {/* ===== SOAK ===== */}
+      {/* SOAK */}
       <h2>Soak Completed</h2>
       <table border="1" width="100%">
-        <thead>
-          <tr>
-            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
-            <th>24 SOAK START</th>
-          </tr>
-        </thead>
+        <thead>{renderHeader(true)}</thead>
         <tbody>
           {soak.map((r, i) => (
             <tr key={i}>
-              {headers.map(k => (
-                <td key={k}><input value={r[k]} readOnly /></td>
-              ))}
-              <td>{r.soakStart}</td>
+              {headers.map(k => <td key={k}><input value={r[k]} readOnly /></td>)}
+              <td>
+                <span>{r.soakStart}</span>{" "}
+                <button onClick={() => deleteSoak(i)}>🗑️ Delete</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {/* ===== CANCELLED ===== */}
+      {/* CANCELLED */}
       <h2 style={{ color: "red" }}>❌ Cancelled Sites</h2>
       <table border="1" width="100%">
-        <thead>
-          <tr>
-            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
-          </tr>
-        </thead>
+        <thead>{renderHeader(true)}</thead>
         <tbody>
           {cancelled.map((r, i) => (
             <tr key={i} style={{ background: "#ffd6d6" }}>
-              {headers.map(k => (
-                <td key={k}><input value={r[k]} readOnly /></td>
-              ))}
+              {headers.map(k => <td key={k}><input value={r[k]} readOnly /></td>)}
+              <td>
+                <button onClick={() => deleteCancelled(i)}>🗑️ Delete</button>
+              </td>
             </tr>
           ))}
         </tbody>
