@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import emailjs from "@emailjs/browser";
+import * as XLSX from "xlsx";
 
 /* ================= EMAIL CONFIG ================= */
 const EMAILJS_SERVICE_ID = "service_m1ki0js";
@@ -38,15 +39,15 @@ const emptyRow = {
   rsm_email: ""
 };
 
-const extractPrefix = v => {
-  const m = v?.match(/\d{3}/);
-  return m ? parseInt(m[0], 10) : null;
+const extractPrefix = value => {
+  const match = value?.match(/\d{3}/);
+  return match ? parseInt(match[0], 10) : null;
 };
 
 const resolveMarket = prefix =>
   MARKET_RANGES.find(r => prefix >= r.from && prefix <= r.to);
 
-/* ================= EMAIL FUNCTION ================= */
+/* ================= EMAIL ================= */
 const sendEmail = (templateId, site) => {
   const params = {
     to_email: site.asp_email_id || site.rsm_email,
@@ -64,8 +65,6 @@ const sendEmail = (templateId, site) => {
     soak_start: site.soakStart || ""
   };
 
-  console.log("📧 EMAIL PARAMS:", params);
-
   return emailjs.send(
     EMAILJS_SERVICE_ID,
     templateId,
@@ -80,90 +79,102 @@ export default function App() {
   const [soak, setSoak] = useState([]);
   const [cancelled, setCancelled] = useState([]);
 
+  /* ---------- Load from localStorage ---------- */
   useEffect(() => {
     setOngoing(JSON.parse(localStorage.getItem("ongoing")) || []);
     setSoak(JSON.parse(localStorage.getItem("soak")) || []);
     setCancelled(JSON.parse(localStorage.getItem("cancelled")) || []);
   }, []);
 
+  /* ---------- Save to localStorage ---------- */
   useEffect(() => localStorage.setItem("ongoing", JSON.stringify(ongoing)), [ongoing]);
   useEffect(() => localStorage.setItem("soak", JSON.stringify(soak)), [soak]);
   useEffect(() => localStorage.setItem("cancelled", JSON.stringify(cancelled)), [cancelled]);
 
-  const update = (i, field, value) => {
+  const update = (index, field, value) => {
     const rows = [...ongoing];
-    const row = { ...rows[i], [field]: value };
+    const row = { ...rows[index], [field]: value };
 
     if (field === "site_id") {
-      const p = extractPrefix(value);
-      const m = resolveMarket(p);
-      if (m) {
-        row.market = m.market;
-        row.rsm = m.rsm;
-        row.rsm_email = m.email;
+      const prefix = extractPrefix(value);
+      const match = resolveMarket(prefix);
+      if (match) {
+        row.market = match.market;
+        row.rsm = match.rsm;
+        row.rsm_email = match.email;
       }
     }
 
-    rows[i] = row;
+    rows[index] = row;
     setOngoing(rows);
   };
 
   const addRow = () => setOngoing([...ongoing, { ...emptyRow }]);
 
-  const moveToSoak = i => {
-    const site = { ...ongoing[i], soakStart: new Date().toLocaleString() };
+  const moveToSoak = index => {
+    const site = { ...ongoing[index], soakStart: new Date().toLocaleString() };
     sendEmail(TEMPLATE_SOAK, site);
     setSoak([...soak, site]);
-    setOngoing(ongoing.filter((_, idx) => idx !== i));
+    setOngoing(ongoing.filter((_, i) => i !== index));
   };
 
-  const cancelSite = i => {
-    const site = ongoing[i];
+  const cancelSite = index => {
+    const site = ongoing[index];
     sendEmail(TEMPLATE_CANCEL, site);
     setCancelled([...cancelled, site]);
-    setOngoing(ongoing.filter((_, idx) => idx !== i));
+    setOngoing(ongoing.filter((_, i) => i !== index));
   };
 
-  const renderRow = (r, i, actions) => (
-    <tr key={i}>
-      {Object.keys(emptyRow).map(k => (
-        <td key={k}>
-          <input
-            value={r[k]}
-            onChange={e => update(i, k, e.target.value)}
-          />
-        </td>
-      ))}
-      {actions}
-    </tr>
-  );
+  /* ================= EXCEL EXPORT ================= */
+  const exportToExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const addSheet = (data, name) => {
+      const ws = XLSX.utils.json_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    };
+
+    addSheet(ongoing, "Ongoing Sites");
+    addSheet(soak, "Soak Completed Sites");
+    addSheet(cancelled, "Cancelled Sites");
+
+    XLSX.writeFile(wb, "Whiteboard_Sites.xlsx");
+  };
+
+  const headers = Object.keys(emptyRow);
 
   return (
     <div style={{ padding: 20 }}>
       <h1>Whiteboard</h1>
-      <button onClick={addRow}>➕ Add Row</button>
+
+      <button onClick={addRow}>➕ Add Row</button>{" "}
+      <button onClick={exportToExcel}>📊 Export to Excel</button>
 
       <h2>Ongoing Sites</h2>
       <table border="1" width="100%">
         <thead>
           <tr>
-            {Object.keys(emptyRow).map(h => (
-              <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>
-            ))}
-            <th>Actions</th>
+            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
+            <th>ACTIONS</th>
           </tr>
         </thead>
         <tbody>
-          {ongoing.map((r, i) =>
-            renderRow(
-              r,
-              i,
+          {ongoing.map((r, i) => (
+            <tr key={i}>
+              {headers.map(k => (
+                <td key={k}>
+                  <input
+                    value={r[k]}
+                    onChange={e => update(i, k, e.target.value)}
+                  />
+                </td>
+              ))}
               <td>
-                <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>
+                <button onClick={() => moveToSoak(i)}>➡ Move to Soak</button>{" "}
                 <button onClick={() => cancelSite(i)}>❌ Cancel</button>
               </td>
-            )
-          )}
+            </tr>
+          ))}
         </tbody>
       </table>
 
@@ -171,16 +182,14 @@ export default function App() {
       <table border="1" width="100%">
         <thead>
           <tr>
-            {Object.keys(emptyRow).map(h => (
-              <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>
-            ))}
+            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
             <th>24 SOAK START</th>
           </tr>
         </thead>
         <tbody>
           {soak.map((r, i) => (
             <tr key={i}>
-              {Object.keys(emptyRow).map(k => (
+              {headers.map(k => (
                 <td key={k}><input value={r[k]} readOnly /></td>
               ))}
               <td>{r.soakStart}</td>
@@ -193,15 +202,13 @@ export default function App() {
       <table border="1" width="100%">
         <thead>
           <tr>
-            {Object.keys(emptyRow).map(h => (
-              <th key={h}>{h.replace(/_/g, " ").toUpperCase()}</th>
-            ))}
+            {headers.map(h => <th key={h}>{h.toUpperCase()}</th>)}
           </tr>
         </thead>
         <tbody>
           {cancelled.map((r, i) => (
             <tr key={i} style={{ background: "#ffd6d6" }}>
-              {Object.keys(emptyRow).map(k => (
+              {headers.map(k => (
                 <td key={k}><input value={r[k]} readOnly /></td>
               ))}
             </tr>
