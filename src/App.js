@@ -94,17 +94,19 @@ export default function App() {
   }
 
   function renderRow(row, i, isSoak = false) {
+    const ro = isSoak;
+
     return (
       <tr key={i} style={isSoak ? { backgroundColor: "#d4f8d4" } : {}}>
-        <td><input value={row.date} readOnly={isSoak} /></td>
-        <td><input value={row.project} readOnly={isSoak} /></td>
-        <td><input value={row.sa} readOnly={isSoak} /></td>
+        <td><input value={row.date} readOnly={ro} onChange={e => update(i, "date", e.target.value)} /></td>
+        <td><input value={row.project} readOnly={ro} onChange={e => update(i, "project", e.target.value)} /></td>
+        <td><input value={row.sa} readOnly={ro} onChange={e => update(i, "sa", e.target.value)} /></td>
         <td><input value={row.market} readOnly /></td>
-        <td><input value={row.site_id} readOnly={isSoak} /></td>
-        <td><input value={row.signum} readOnly={isSoak} /></td>
-        <td><input value={row.asp_name_number} readOnly={isSoak} /></td>
-        <td><input value={row.asp_email_id} readOnly={isSoak} /></td>
-        <td><input value={row.comments} readOnly={isSoak} /></td>
+        <td><input value={row.site_id} readOnly={ro} onChange={e => update(i, "site_id", e.target.value)} /></td>
+        <td><input value={row.signum} readOnly={ro} onChange={e => update(i, "signum", e.target.value)} /></td>
+        <td><input value={row.asp_name_number} readOnly={ro} onChange={e => update(i, "asp_name_number", e.target.value)} /></td>
+        <td><input value={row.asp_email_id} readOnly={ro} onChange={e => update(i, "asp_email_id", e.target.value)} /></td>
+        <td><input value={row.comments} readOnly={ro} onChange={e => update(i, "comments", e.target.value)} /></td>
         <td><input value={row.rsm} readOnly /></td>
         <td><input value={row.rsm_email} readOnly /></td>
         <td>
